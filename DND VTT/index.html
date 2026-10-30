@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom D&D VTT — Map Module</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="vtt-app">
+    <!-- Top Toolbar -->
+    <header class="vtt-header">
+      <div class="brand">
+        <span class="brand-icon">🎲</span>
+        <h1>Arcane Table <span class="badge">Map Module</span></h1>
+      </div>
+
+      <div class="toolbar-center">
+        <div class="tool-switcher" id="tool-switcher">
+          <button id="tool-pan" class="btn btn-tool active" title="Pan & Explore Tabletop (P or V)">
+            🖐️ <span>Pan</span>
+          </button>
+          <button id="tool-measure" class="btn btn-tool" title="Measure Movement (5ft Increments) (M)">
+            📏 <span>Measure</span>
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Token Quick Spawn -->
+        <div class="token-spawn-bar">
+          <button id="btn-spawn-player" class="btn btn-token btn-player" title="Add Green Player Token">
+            <span class="dot dot-green"></span> <span>+ Player</span>
+          </button>
+          <button id="btn-spawn-monster" class="btn btn-token btn-monster" title="Add Red Monster Token">
+            <span class="dot dot-red"></span> <span>+ Monster</span>
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <button id="btn-upload-map" class="btn btn-primary" title="Upload Image, GIF, or Video Map">
+          <span>📁 Upload Map</span>
+        </button>
+        <button id="btn-url-map" class="btn" title="Load Map from URL">
+          <span>🔗 Load URL</span>
+        </button>
+        <input
+          type="file"
+          id="map-file-input"
+          accept="image/*,video/*,.gif,.webp,.mp4,.webm,.ogg,.mov,.svg,.bmp,.avif"
+          multiple
+          hidden
+        />
+
+        <div class="divider"></div>
+
+        <div class="zoom-controls">
+          <button id="btn-zoom-out" class="btn btn-icon" title="Zoom Out (-)">−</button>
+          <span id="zoom-readout" class="readout" title="Click to reset to 100%">100%</span>
+          <button id="btn-zoom-in" class="btn btn-icon" title="Zoom In (+)">+</button>
+          <button id="btn-fit-map" class="btn" title="Fit Map to Screen (F)">Fit</button>
+        </div>
+
+        <!-- Video Playback Controls (Shown only when active map is a video) -->
+        <div id="video-controls" class="video-controls hidden">
+          <div class="divider"></div>
+          <button id="btn-video-play" class="btn btn-icon" title="Play / Pause Video">⏸️</button>
+          <button id="btn-video-mute" class="btn btn-icon" title="Mute / Unmute Video">🔇</button>
+          <label class="speed-label" title="Video Playback Speed">
+            <span>Speed</span>
+            <select id="video-speed-select">
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1" selected>1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <!-- Multiplayer Invite / Connect Button -->
+        <button id="btn-share-room" class="btn btn-share" title="Share invite link with players (No external login needed)">
+          <span class="net-status-dot offline" id="net-status-dot"></span>
+          <span id="btn-share-text">🔗 Invite Link</span>
+        </button>
+
+        <!-- Role View Switcher (DM vs Player) -->
+        <div class="role-switcher" id="role-switcher">
+          <button id="btn-role-dm" class="btn btn-role active" title="Dungeon Master View: Full access to all DM tools, monsters, and HP">
+            👑 <span>DM View</span>
+          </button>
+          <button id="btn-role-player" class="btn btn-role" title="Player View: Monster add locked, grid locked, enemy HP hidden">
+            👤 <span>Player View</span>
+          </button>
+        </div>
+
+        <button id="btn-toggle-sidebar" class="btn" title="Toggle Map & Grid Settings">
+          ⚙️ Sidebar
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="vtt-main">
+      <!-- Interactive VTT Viewport -->
+      <div id="vtt-viewport" class="vtt-viewport" tabindex="0">
+        <!-- Transformable World Stage -->
+        <div id="vtt-stage" class="vtt-stage">
+          <!-- Map Media Container (holds <img> or <video>) -->
+          <div id="map-layer" class="map-layer"></div>
+          <!-- Grid Overlay Canvas -->
+          <canvas id="grid-canvas" class="grid-canvas"></canvas>
+          <!-- Tokens Layer (Characters & Monsters) -->
+          <div id="tokens-layer" class="tokens-layer"></div>
+          <!-- Measure & Movement Overlay Canvas -->
+          <canvas id="measure-canvas" class="measure-canvas"></canvas>
+
+          <!-- Visual Grid Calibration Box (D&D Beyond style) -->
+          <div id="grid-calibrator" class="grid-calibrator hidden">
+            <div class="calibrator-badge">
+              <span id="calibrator-dim-label">3×3 Grid</span> • <span id="calibrator-size-text">64px</span>
+            </div>
+            <div id="calibrator-subgrid" class="calibrator-subgrid"></div>
+            <!-- Resize Handles -->
+            <div class="cal-handle cal-nw" data-handle="nw"></div>
+            <div class="cal-handle cal-n" data-handle="n"></div>
+            <div class="cal-handle cal-ne" data-handle="ne"></div>
+            <div class="cal-handle cal-e" data-handle="e"></div>
+            <div class="cal-handle cal-se" data-handle="se"></div>
+            <div class="cal-handle cal-s" data-handle="s"></div>
+            <div class="cal-handle cal-sw" data-handle="sw"></div>
+            <div class="cal-handle cal-w" data-handle="w"></div>
+          </div>
+        </div>
+
+        <!-- Floating D&D Beyond-style Grid Alignment Wizard Bar -->
+        <div id="grid-wizard-bar" class="grid-wizard-bar hidden">
+          <div class="wizard-header">
+            <div class="wizard-title">
+              <span class="wizard-icon">📐</span>
+              <div>
+                <div class="wizard-heading">Visual Grid Alignment</div>
+                <div class="wizard-sub">Drag & resize the 3×3 box to match your map's squares</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard-controls">
+            <div class="wizard-group">
+              <span class="wizard-label">Box Size</span>
+              <div class="btn-group" id="cal-dim-buttons">
+                <button type="button" class="btn btn-sm btn-dim active" data-dim="3">3×3</button>
+                <button type="button" class="btn btn-sm btn-dim" data-dim="2">2×2</button>
+                <button type="button" class="btn btn-sm btn-dim" data-dim="1">1×1</button>
+              </div>
+            </div>
+
+            <div class="wizard-group">
+              <span class="wizard-label">Cell Size (px)</span>
+              <div class="stepper">
+                <button id="btn-cal-size-dec" class="btn btn-sm btn-icon" title="Decrease cell size by 1px (−)">−</button>
+                <input type="number" id="cal-cell-size" min="16" max="300" value="64" class="num-input cal-input" />
+                <button id="btn-cal-size-inc" class="btn btn-sm btn-icon" title="Increase cell size by 1px (+)">+</button>
+              </div>
+            </div>
+
+            <div class="wizard-group">
+              <span class="wizard-label">Nudge</span>
+              <div class="nudge-pad">
+                <button id="btn-nudge-left" class="btn btn-sm btn-icon" title="Nudge Left (←)">◀</button>
+                <button id="btn-nudge-up" class="btn btn-sm btn-icon" title="Nudge Up (↑)">▲</button>
+                <button id="btn-nudge-down" class="btn btn-sm btn-icon" title="Nudge Down (↓)">▼</button>
+                <button id="btn-nudge-right" class="btn btn-sm btn-icon" title="Nudge Right (→)">▶</button>
+              </div>
+            </div>
+
+            <div class="wizard-group">
+              <span class="wizard-label">Color</span>
+              <input type="color" id="cal-grid-color" value="#ffffff" class="color-input cal-color" title="Grid Line Color" />
+            </div>
+
+            <div class="wizard-group">
+              <span class="wizard-label">Opacity</span>
+              <input type="range" id="cal-grid-opacity" min="5" max="100" value="35" class="cal-opacity-slider" />
+            </div>
+
+            <div class="wizard-actions">
+              <button id="btn-cal-save" class="btn btn-primary" title="Confirm and save grid">✓ Apply Grid</button>
+              <button id="btn-cal-nogrid" class="btn" title="Disable grid for this map">No Grid</button>
+              <button id="btn-cal-cancel" class="btn" title="Exit without saving">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State & Drag-and-Drop Prompt -->
+        <div id="empty-state" class="empty-state">
+          <div class="empty-card">
+            <div class="empty-icon">🗺️</div>
+            <h2>No Map Loaded</h2>
+            <p>Drag & drop any <strong>Image</strong> (PNG, JPG, WebP, SVG), <strong>Animated GIF</strong>, or <strong>Video</strong> (MP4, WebM) anywhere on the table.</p>
+            <div class="empty-actions">
+              <button id="btn-empty-upload" class="btn btn-primary">Choose Map File</button>
+              <button id="btn-empty-sample" class="btn">Load Demo Dungeon</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Drag Overlay -->
+        <div id="drop-overlay" class="drop-overlay hidden">
+          <div class="drop-box">
+            <span>📥 Drop Image, GIF, or Video Map Here</span>
+          </div>
+        </div>
+
+        <!-- Bottom Status Pill -->
+        <div class="status-bar">
+          <span id="map-info-text">No active map</span>
+          <span class="status-sep">•</span>
+          <span id="coords-text">X: 0, Y: 0 (Cell: 0, 0)</span>
+          <span class="status-sep">•</span>
+          <span id="measure-status-text">📏 Ruler: Idle (Press M)</span>
+        </div>
+      </div>
+
+      <!-- Right Sidebar: Map Library & Grid Configuration -->
+      <aside id="vtt-sidebar" class="vtt-sidebar">
+        <!-- Loaded Maps Section -->
+        <section id="sec-maps" class="panel-section">
+          <div class="section-header collapsible-trigger">
+            <div class="header-left">
+              <span class="collapse-chevron">▾</span>
+              <h3>📚 Loaded Maps</h3>
+            </div>
+            <span id="map-count-badge" class="count-badge">0</span>
+          </div>
+          <div class="section-content">
+            <ul id="map-list" class="map-list">
+              <li class="map-list-empty">No maps uploaded yet.</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Tokens & Combatants Section -->
+        <section id="sec-tokens" class="panel-section">
+          <div class="section-header collapsible-trigger">
+            <div class="header-left">
+              <span class="collapse-chevron">▾</span>
+              <h3>🎭 Tokens & Combatants</h3>
+            </div>
+            <span id="token-count-badge" class="count-badge">0</span>
+          </div>
+          <div class="section-content">
+            <div class="token-spawn-grid">
+              <button id="btn-side-spawn-player" class="btn btn-token btn-player">
+                <span class="dot dot-green"></span> + Player
+              </button>
+              <button id="btn-side-spawn-monster" class="btn btn-token btn-monster">
+                <span class="dot dot-red"></span> + Monster
+              </button>
+            </div>
+
+            <ul id="token-list" class="token-list">
+              <li class="token-list-empty">No tokens placed yet.</li>
+            </ul>
+
+            <!-- Selected Token Inspector -->
+            <div id="token-inspector" class="token-inspector hidden">
+              <div class="inspector-header">
+                <span id="insp-token-type-pill" class="type-pill">PLAYER</span>
+                <span class="inspector-title">Token Details</span>
+              </div>
+
+              <div class="control-group">
+                <label for="insp-token-name">Name</label>
+                <input type="text" id="insp-token-name" class="text-input" />
+              </div>
+
+              <div class="control-row-2">
+                <div class="control-group">
+                  <label for="insp-token-type">Role</label>
+                  <select id="insp-token-type">
+                    <option value="player">🟢 Player (Green)</option>
+                    <option value="monster">🔴 Monster (Red)</option>
+                  </select>
+                </div>
+                <div class="control-group">
+                  <label for="insp-token-size">Size</label>
+                  <select id="insp-token-size">
+                    <option value="1">Medium (1×1)</option>
+                    <option value="2">Large (2×2)</option>
+                    <option value="3">Huge (3×3)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Enemy HP Hidden Notice for Player View -->
+              <div id="insp-player-notice" class="player-hidden-notice hidden">
+                🔒 Enemy Hit Points are hidden from players.
+              </div>
+
+              <!-- HP Section (Hidden for monsters in Player View) -->
+              <div id="insp-hp-section" class="control-group">
+                <div class="label-row">
+                  <label>Hit Points (HP)</label>
+                  <span id="insp-hp-readout" class="readout">25 / 25</span>
+                </div>
+                <div class="hp-input-row">
+                  <button id="btn-hp-minus" class="btn btn-sm btn-icon" title="Damage -5 HP">−5</button>
+                  <input type="number" id="insp-token-hp" class="num-input full" min="0" />
+                  <span class="hp-slash">/</span>
+                  <input type="number" id="insp-token-maxhp" class="num-input full" min="1" />
+                  <button id="btn-hp-plus" class="btn btn-sm btn-icon" title="Heal +5 HP">+5</button>
+                </div>
+              </div>
+
+              <button id="btn-delete-token" class="btn btn-full btn-danger">🗑️ Delete Token</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Grid Configuration Section -->
+        <section id="sec-grid" class="panel-section">
+          <div class="section-header collapsible-trigger">
+            <div class="header-left">
+              <span class="collapse-chevron">▾</span>
+              <h3>📏 Tabletop Grid</h3>
+            </div>
+            <label class="toggle-switch" onclick="event.stopPropagation()">
+              <input type="checkbox" id="grid-enabled" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="grid-type">Grid Type</label>
+              <select id="grid-type">
+                <option value="square" selected>Square Grid</option>
+                <option value="hex-flat">Hex Grid (Flat Top)</option>
+                <option value="hex-pointy">Hex Grid (Pointy Top)</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="grid-size">Cell Size (px)</label>
+                <input type="number" id="grid-size-num" min="16" max="300" value="64" class="num-input" />
+              </div>
+              <input type="range" id="grid-size" min="16" max="300" value="64" />
+            </div>
+
+            <div class="control-row-2">
+              <div class="control-group">
+                <label for="grid-offset-x">Offset X (px)</label>
+                <input type="number" id="grid-offset-x" min="-300" max="300" value="0" class="num-input full" />
+              </div>
+              <div class="control-group">
+                <label for="grid-offset-y">Offset Y (px)</label>
+                <input type="number" id="grid-offset-y" min="-300" max="300" value="0" class="num-input full" />
+              </div>
+            </div>
+
+            <div class="control-row-2">
+              <div class="control-group">
+                <label for="grid-color">Grid Color</label>
+                <input type="color" id="grid-color" value="#ffffff" class="color-input" />
+              </div>
+              <div class="control-group">
+                <label for="grid-opacity">Opacity (<span id="grid-opacity-val">25%</span>)</label>
+                <input type="range" id="grid-opacity" min="0" max="100" value="25" />
+              </div>
+            </div>
+
+            <button id="btn-open-grid-wizard" class="btn btn-primary btn-full" title="Open visual D&D Beyond-style calibration tool">
+              📐 Align Grid (Visual Maker)
+            </button>
+          </div>
+        </section>
+
+        <!-- Movement & Measurement Section -->
+        <section id="sec-movement" class="panel-section">
+          <div class="section-header collapsible-trigger">
+            <div class="header-left">
+              <span class="collapse-chevron">▾</span>
+              <h3>📏 Movement & Ruler</h3>
+            </div>
+            <span class="badge" style="font-size: 0.65rem;">5ft Step</span>
+          </div>
+          <div class="section-content">
+            <div class="control-group">
+              <label for="measure-rule">Measurement Rule</label>
+              <select id="measure-rule">
+                <option value="5-5-5" selected>Standard 5e (5-5-5 Diagonal)</option>
+                <option value="5-10-5">DMG Variant (5-10-5 Diagonal)</option>
+                <option value="euclidean">Euclidean (Direct 5ft Round)</option>
+              </select>
+            </div>
+
+            <div class="control-row-2">
+              <div class="control-group">
+                <label for="speed-base">Base Move (ft)</label>
+                <input type="number" id="speed-base" min="5" max="120" step="5" value="30" class="num-input full" />
+              </div>
+              <div class="control-group">
+                <label for="speed-dash">Dash Move (ft)</label>
+                <input type="number" id="speed-dash" min="10" max="240" step="5" value="60" class="num-input full" />
+              </div>
+            </div>
+
+            <div class="measure-quick-help">
+              <small>💡 <strong>Tip:</strong> Click a square to measure from center. Press <strong>Space</strong> while measuring to drop waypoints around walls. Press <strong>Esc</strong> to clear.</small>
+            </div>
+            <button id="btn-clear-ruler" class="btn btn-full" style="margin-top: 8px;">✕ Clear Ruler</button>
+          </div>
+        </section>
+
+        <!-- Map Transform / Scale Section -->
+        <section id="sec-adjust" class="panel-section">
+          <div class="section-header collapsible-trigger">
+            <div class="header-left">
+              <span class="collapse-chevron">▾</span>
+              <h3>🖼️ Map Adjustments</h3>
+            </div>
+          </div>
+          <div class="section-content">
+            <div class="control-group">
+              <div class="label-row">
+                <label for="map-scale">Map Scale (%)</label>
+                <input type="number" id="map-scale-num" min="10" max="500" value="100" class="num-input" />
+              </div>
+              <input type="range" id="map-scale" min="10" max="500" value="100" />
+            </div>
+            <button id="btn-reset-map-adjust" class="btn btn-full">Reset Map Adjustments</button>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <!-- Load Map from URL Modal -->
+    <div id="url-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <h3>Load Map from URL</h3>
+        <p class="modal-hint">Paste a direct link to an image (PNG, JPG, GIF, WebP) or video (MP4, WebM).</p>
+        <div class="control-group">
+          <label for="map-url-input">Media URL</label>
+          <input type="url" id="map-url-input" placeholder="https://example.com/dungeon-map.mp4" class="text-input" />
+        </div>
+        <div class="control-row-2">
+          <div class="control-group">
+            <label for="map-url-name">Map Name (Optional)</label>
+            <input type="text" id="map-url-name" placeholder="Goblin Cavern" class="text-input" />
+          </div>
+          <div class="control-group">
+            <label for="map-url-type">Media Type</label>
+            <select id="map-url-type">
+              <option value="auto" selected>Auto-detect</option>
+              <option value="image">Image / GIF</option>
+              <option value="video">Video (MP4/WebM)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="btn-url-cancel" class="btn">Cancel</button>
+          <button id="btn-url-confirm" class="btn btn-primary">Load Map</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multiplayer Share / Connect Modal -->
+    <div id="share-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>🔗 Instant Player Connection</h3>
+          <span class="badge" id="net-role-badge">DM Host</span>
+        </div>
+        <p class="modal-hint">Send this link to your players. They open it on any browser to join in real-time — <strong>no account or external login needed!</strong></p>
+
+        <!-- Warning shown only if running from file:/// -->
+        <div id="file-protocol-warning" class="protocol-warning hidden">
+          <div class="warning-title">⚠️ Notice: You are on a local file link (<code>file:///</code>)</div>
+          <p>Links starting with <code>file:///C:/Users/...</code> point to your personal hard drive. Your friends on other computers cannot open files from your local C: drive.</p>
+          <p><strong>To let friends join from anywhere on the internet without downloading anything:</strong></p>
+          <ul style="margin: 6px 0 0 16px; padding: 0; font-size: 0.8rem; line-height: 1.4;">
+            <li><strong>Free 1-Click Web Link:</strong> Drag this entire folder to <a href="https://app.netlify.com/drop" target="_blank" style="color: var(--accent-light); text-decoration: underline;">Netlify Drop</a> or publish to <strong>GitHub Pages</strong>. You get a public <code>https://...</code> link they can open instantly!</li>
+            <li><strong>Same Wi-Fi (LAN):</strong> Double-click <code>Start-Server.bat</code> in the project folder and share your local IP address.</li>
+          </ul>
+        </div>
+
+        <div class="control-group">
+          <label for="share-link-input">Player Direct Invite Link</label>
+          <div class="share-input-row">
+            <input type="text" id="share-link-input" readonly class="text-input" />
+            <button id="btn-copy-share-link" class="btn btn-primary">📋 Copy</button>
+          </div>
+        </div>
+
+        <div class="control-row-2">
+          <div class="control-group">
+            <label for="room-code-display">Room Code</label>
+            <input type="text" id="room-code-display" readonly class="text-input" />
+          </div>
+          <div class="control-group">
+            <label>Connection Status</label>
+            <div id="net-status-pill" class="net-pill">Connecting...</div>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Connected Players (<span id="connected-count">0</span>)</label>
+          <ul id="connected-players-list" class="connected-list">
+            <li class="player-list-empty">Waiting for players to join...</li>
+          </ul>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-close-share-modal" class="btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Player Name Prompt (shown when opening an invite link) -->
+    <div id="player-name-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <h3>🎲 Join Campaign Table</h3>
+        <p class="modal-hint">Enter your character or player name to connect directly to the DM's battlemap.</p>
+        <div class="control-group">
+          <label for="player-name-input">Character / Player Name</label>
+          <input type="text" id="player-name-input" placeholder="e.g. Aragorn, Thorin, or Sarah" class="text-input" />
+        </div>
+        <div class="modal-actions">
+          <button id="btn-confirm-player-name" class="btn btn-primary">Enter Game Table</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PeerJS WebRTC Library for Serverless Multiplayer -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="js/mapModule.js"></script>
+  <script src="js/tokenModule.js"></script>
+  <script src="js/networkModule.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
+
